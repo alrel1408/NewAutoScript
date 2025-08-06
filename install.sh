@@ -255,9 +255,9 @@ function base_package() {
     clear
     ########
     print_install "Menginstall Packet Yang Dibutuhkan"
-    apt install zip pwgen openssl netcat socat cron bash-completion -y
-    apt install figlet -y
     apt update -y
+    apt install zip unzip pwgen openssl netcat socat cron bash-completion curl wget -y
+    apt install figlet -y
     apt upgrade -y
     apt dist-upgrade -y
     systemctl enable chronyd
@@ -852,12 +852,42 @@ print_success "All Packet"
 function menu(){
     clear
     print_install "Memasang Menu Packet"
-    wget ${REPO}menu/menu.zip
-    unzip menu.zip
+    cd /tmp
+    wget -q ${REPO}menu/menu.zip -O menu.zip
+    
+    # Cek apakah download berhasil
+    if [ ! -f "menu.zip" ]; then
+        print_error "Gagal download menu.zip"
+        exit 1
+    fi
+    
+    # Extract menu
+    unzip -q menu.zip
+    
+    if [ ! -d "menu" ]; then
+        print_error "Gagal extract menu.zip"
+        exit 1
+    fi
+    
+    # Install menu files
     chmod +x menu/*
-    mv menu/* /usr/local/sbin
-    rm -rf menu
-    rm -rf menu.zip
+    cp menu/* /usr/local/sbin/
+    chmod +x /usr/local/sbin/*
+    
+    # Pastikan PATH sudah benar
+    if ! echo $PATH | grep -q "/usr/local/sbin"; then
+        echo 'export PATH="/usr/local/sbin:$PATH"' >> /root/.bashrc
+        echo 'export PATH="/usr/local/sbin:$PATH"' >> /etc/profile
+    fi
+    
+    # Buat symbolic link untuk memastikan menu accessible
+    ln -sf /usr/local/sbin/menu /usr/bin/menu
+    
+    # Cleanup
+    rm -rf /tmp/menu*
+    cd /root
+    
+    print_success "Menu Packet"
 }
 
 # Membaut Default Menu 
@@ -871,6 +901,10 @@ if [ "\$BASH" ]; then
     fi
 fi
 mesg n || true
+
+# Pastikan PATH sudah include /usr/local/sbin
+export PATH="/usr/local/sbin:\$PATH"
+
 clear
 echo -e "\033[1;36m"
 echo "  ╔══════════════════════════════════════════════════════════╗"
@@ -879,7 +913,14 @@ echo "  ║                    AutoScript v4.0                      ║"
 echo "  ╚══════════════════════════════════════════════════════════╝"
 echo -e "\033[0m"
 sleep 2
-menu
+
+# Cek apakah menu command tersedia sebelum menjalankan
+if command -v menu >/dev/null 2>&1; then
+    menu
+else
+    echo -e "\033[1;31mMenu command not found. Please run: source /root/.bashrc\033[0m"
+    echo -e "\033[1;33mThen type: menu\033[0m"
+fi
 EOF
 
 cat >/etc/cron.d/xp_all <<-END
@@ -968,6 +1009,15 @@ print_install "Enable Service"
     systemctl restart xray
     systemctl restart cron
     systemctl restart haproxy
+    systemctl restart ssh
+    systemctl restart dropbear
+    
+    # Pastikan PATH tersedia untuk semua user
+    echo 'export PATH="/usr/local/sbin:$PATH"' >> /etc/bash.bashrc
+    
+    # Update environment
+    source /root/.bashrc 2>/dev/null || true
+    
     print_success "Enable Service"
     clear
 }
